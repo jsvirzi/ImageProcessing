@@ -7,9 +7,6 @@ using namespace cv;
 
 /// Global variables
 
-Mat src, src_gray;
-Mat dst, detected_edges;
-
 int edgeThresh = 1;
 int lowThreshold;
 int const max_lowThreshold = 100;
@@ -21,7 +18,7 @@ char* window_name = "Edge Map";
  * @function CannyThreshold
  * @brief Trackbar callback - Canny thresholds input with a ratio 1:3
  */
-void CannyThreshold(int, void*)
+void CannyThreshold(Mat &src_gray, Mat &detected_edges, Mat &src, Mat &dst, int, void*)
 {
   /// Reduce noise with a kernel 3x3
   blur( src_gray, detected_edges, Size(3,3) );
@@ -38,32 +35,51 @@ void CannyThreshold(int, void*)
 
 
 /** @function main */
-int main( int argc, char** argv )
-{
-  /// Load an image
-  src = imread( argv[1] );
+int main(int argc, char** argv) {
 
-  if( !src.data )
-  { return -1; }
+	std::string ifile = "lena.jpg";
+	int i, wait = 30;
+	bool debug = false;
 
-  /// Create a matrix of the same type and size as src (for dst)
-  dst.create( src.size(), src.type() );
+	for(i=1;i<argc;++i) {
+		if(strcmp(argv[i], "-debug") == 0) debug = true;
+		else if(strcmp(argv[i], "-i") == 0) ifile = argv[++i]; 
+		else if(strcmp(argv[i], "-threshold") == 0) lowThreshold = atoi(argv[++i]);
+		else if(strcmp(argv[i], "-wait") == 0) wait = atoi(argv[++i]);
+	}
 
-  /// Convert the image to grayscale
-  cvtColor( src, src_gray, CV_BGR2GRAY );
+	const char *filename = ifile.c_str(); 
+	VideoCapture cap(filename); /* open input stream - camera or file */ 
+	const char *windowName = "main";
+	namedWindow(windowName, WINDOW_AUTOSIZE);
+	int rows = 480, cols = 640;
 
-  /// Create a window
-  namedWindow( window_name, CV_WINDOW_AUTOSIZE );
+	while(true) {
+
+		Mat raw_frame, frame, gray_frame, detected_edges;
+
+		cap >> raw_frame;
+
+		Size size(640, 480);
+		resize(raw_frame, frame, size);
+
+  	/// Create a matrix of the same type and size as src (for dst)
+		Mat dst = Mat::zeros(frame.size(), frame.type());
+
+  	/// Convert the image to grayscale
+  		cvtColor(frame, gray_frame, CV_BGR2GRAY );
 
   /// Create a Trackbar for user to enter threshold
-  createTrackbar( "Min Threshold:", window_name, &lowThreshold, max_lowThreshold, CannyThreshold );
+  // createTrackbar( "Min Threshold:", windowName, &lowThreshold, max_lowThreshold, CannyThreshold );
 
   /// Show the image
-  CannyThreshold(0, 0);
+		CannyThreshold(gray_frame, detected_edges, frame, dst, 0, 0);
 
   /// Wait until user exit program by pressing a key
-  waitKey(0);
+  		waitKey(wait);
+	}
 
-  return 0;
-  }
+	return 0;
+
+}
 
