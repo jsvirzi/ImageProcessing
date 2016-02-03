@@ -39,7 +39,38 @@ void CannyThreshold(Mat &src_gray, Mat &detected_edges, Mat &src, Mat &dst, int,
 
  }
 
+double planarFlow(Mat &mat) {
+	double accX = 0.0, accY = 0.0, accXX = 0.0, accXY = 0.0, accYY = 0.0, sumOfWeights = 0.0;
+	int i, col, row, rows = mat.rows, cols = mat.cols;
+	float *buff = (float *)mat.data;
+	for(row=0;row<rows;++row) {
+		double y = row;
+		for(col=0;col<cols;++col) {
+			double x = col;
+			double weight = buff[row * cols + col];
+			sumOfWeights += weight;
+			accX += weight * x;
+			accY += weight * y;
+			accXX += weight * x * x;
+			accXY += weight * x * y;
+			accYY += weight * y * y;
+		}
+	}
+
+	double meanX = accX / sumOfWeights;
+	double meanY = accY / sumOfWeights;
+	// double momXX = accXX / sumOfWeights - meanX * meanX;
+	// double momXY = accXY / sumOfWeights - meanX * meanY;
+	// double momYY = accYY / sumOfWeights - meanY * meanY;
+	double det = accXX * accYY - accXY * accXY;
+	double trace = accXX + accYY;
+	double flow = 4.0 * det / (trace * trace);
+	return flow;
+}
+
 bool detectVerticalEdge(Mat &mat, int rowMin, int rowMax, int colMin, int colMax, double *correlation) {
+
+/* extract the bounding box as a separate image */
 	Point topLeft = Point(colMin, rowMin);
 printf("topLeft = (C=%d, R=%d)\n", topLeft.x, topLeft.y);
 	Point bottomRight = Point(colMax, rowMax);
@@ -48,12 +79,14 @@ printf("bottomRight = (C=%d, R=%d)\n", bottomRight.x, bottomRight.y);
 	Mat grayBoundingBox, colorBoundingBox = mat(rect);
 	cvtColor(colorBoundingBox, grayBoundingBox, CV_BGR2GRAY);
 	grayBoundingBox.convertTo(grayBoundingBox, CV_32F);
+/* at this point, we have color and grayscale versions of the bounding box image */
+
 	float *data = (float *)grayBoundingBox.data;
 	int i, col, row, nRows = grayBoundingBox.rows, nCols = grayBoundingBox.cols, width = 3; /* width should be odd */
 printf("nRows = %d nCols = %d\n", nRows, nCols);
 	const char *windowName = "boundingbox";
 	imshow(windowName, grayBoundingBox);
-	waitKey(0);
+	// waitKey(0);
 	// for(i=0;i<nCols;++i) correlation[i] = 0.0;
 	double *histogram = new double [ nRows ];
 	Scalar color(0xff, 0xff, 0xff);
@@ -197,12 +230,14 @@ int main(int argc, char** argv) {
 		int col = colMin, row = rowMin, width = 1 + colMax - colMin, height = 1 + rowMax - rowMin;
 		double *correlation = new double [ width ]; 
 		double *xvalues = new double [ width ];
+		for(i=0;i<width;++i) correlation[i] = 0.0;
 		detectVerticalEdge(dst, rowMin, rowMax, colMin, colMax, correlation);
 		cv::Rect rect(col, row, width, height);
 		rectangle(dst, rect, color);
 
 		for(i=0;i<width;++i) {
 			if(correlation[i] > 38.0) {
+				printf("col=%d wins\n", i);
 				Point p1(col+i, rowMin);
 				Point p2(col+i, rowMax);
 				line(dst, p1, p2, Scalar(0x00, 0x00, 0xff));
