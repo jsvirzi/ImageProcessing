@@ -59,7 +59,7 @@ printf("all done\n");
 int main(int argc, char** argv) {
 
 	std::string ifile = "lena.jpg";
-	int i, wait = 30;
+	int i, wait = 30, nX = 100, nY = 100;
 	bool debug = false;
 
 	lowThreshold = 50;
@@ -68,6 +68,7 @@ int main(int argc, char** argv) {
 		if(strcmp(argv[i], "-debug") == 0) debug = true;
 		else if(strcmp(argv[i], "-i") == 0) ifile = argv[++i]; 
 		else if(strcmp(argv[i], "-threshold") == 0) lowThreshold = atoi(argv[++i]);
+		else if(strcmp(argv[i], "-n") == 0) { nX = atoi(argv[++i]); nY = atoi(argv[++i]); }
 		else if(strcmp(argv[i], "-wait") == 0) wait = atoi(argv[++i]);
 	}
 
@@ -77,7 +78,7 @@ int main(int argc, char** argv) {
 	const char *windowName = "main";
 	namedWindow(windowName, WINDOW_AUTOSIZE);
 
-	int nX = 200, nY = 200, row, col, nRows = nY + 1, nCols = nX + 1;
+	int row, col, nRows = nY + 1, nCols = nX + 1;
 	float *hist = new float [ (nX + 1) * (nY + 1) ];
 	double xScale = 1.0, yScale = 1.0;
 
