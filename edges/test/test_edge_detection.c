@@ -21,6 +21,18 @@ int ratio = 3;
 int kernel_size = 3;
 char* window_name = "Edge Map";
 
+void smear(Mat &imat, Mat &omat, float scale) {
+	int i, col, row, rows = imat.rows, cols = imat.cols;
+	imat.copyTo(omat);
+	float *buff = (float *)omat.data;
+	for(row=0;row<rows;++row) {
+		double y = row;
+		for(col=0;col<cols;++col) {
+			double x = col;
+		}
+	}
+}
+
 /**
  * @function CannyThreshold
  * @brief Trackbar callback - Canny thresholds input with a ratio 1:3
@@ -48,6 +60,8 @@ double planarFlow(Mat &mat) {
 		for(col=0;col<cols;++col) {
 			double x = col;
 			double weight = buff[row * cols + col];
+if(weight > 10.0) weight = 1.0;
+else weight = 0.0;
 			sumOfWeights += weight;
 			accX += weight * x;
 			accY += weight * y;
@@ -57,15 +71,48 @@ double planarFlow(Mat &mat) {
 		}
 	}
 
-	double meanX = accX / sumOfWeights;
-	double meanY = accY / sumOfWeights;
+	// double meanX = accX / sumOfWeights;
+	// double meanY = accY / sumOfWeights;
 	// double momXX = accXX / sumOfWeights - meanX * meanX;
 	// double momXY = accXY / sumOfWeights - meanX * meanY;
 	// double momYY = accYY / sumOfWeights - meanY * meanY;
 	double det = accXX * accYY - accXY * accXY;
 	double trace = accXX + accYY;
 	double flow = 4.0 * det / (trace * trace);
+	printf("sqrt(det) = %f. trace = %f\n", sqrt(fabs(det)), trace);
 	return flow;
+}
+
+double pearsonCorrelation(Mat &mat) {
+	double accX = 0.0, accY = 0.0, accXX = 0.0, accXY = 0.0, accYY = 0.0, sumOfWeights = 0.0;
+	int i, col, row, rows = mat.rows, cols = mat.cols;
+	float *buff = (float *)mat.data;
+	for(row=0;row<rows;++row) {
+		double y = row;
+		for(col=0;col<cols;++col) {
+			double x = col;
+			double weight = buff[row * cols + col];
+if(weight > 10.0) weight = 1.0;
+else weight = 0.0;
+			sumOfWeights += weight;
+			accX += weight * x;
+			accY += weight * y;
+			accXX += weight * x * x;
+			accXY += weight * x * y;
+			accYY += weight * y * y;
+printf("x/y=%f/%f WEIGHT=%f\n", x, y, weight); 
+		}
+	}
+
+// sumOfWeights = sumOfWeights * 10.0;
+
+	double meanX = accX / sumOfWeights;
+	double meanY = accY / sumOfWeights;
+	double momXX = accXX / sumOfWeights - meanX * meanX;
+	double momXY = accXY / sumOfWeights - meanX * meanY;
+	double momYY = accYY / sumOfWeights - meanY * meanY;
+	double corr = momXY / sqrt(fabs(momXX * momYY));
+	return corr;
 }
 
 bool detectVerticalEdge(Mat &mat, int rowMin, int rowMax, int colMin, int colMax, double *correlation) {
@@ -86,16 +133,17 @@ printf("bottomRight = (C=%d, R=%d)\n", bottomRight.x, bottomRight.y);
 printf("nRows = %d nCols = %d\n", nRows, nCols);
 	const char *windowName = "boundingbox";
 	imshow(windowName, grayBoundingBox);
-	// waitKey(0);
+	waitKey(0);
 	// for(i=0;i<nCols;++i) correlation[i] = 0.0;
+/* if using planar flow */
 	double *histogram = new double [ nRows ];
 	Scalar color(0xff, 0xff, 0xff);
-	for(col=width/2;col<(nCols-width/2);++col) {
-		Rect rect(col, 0, 1, nRows); 
+	width = 5;
+	for(col=0;col<(nCols-width);++col) {
 		for(row=0;row<nRows;++row) {
 			double acc = 0.0;
 			for(i=0;i<width;++i) {
-				int tCol = col - width / 2 + i;
+				int tCol = col + i;
 				int index = row * nCols + tCol;
 				acc += data[index];
 			}
@@ -106,10 +154,70 @@ printf("nRows = %d nCols = %d\n", nRows, nCols);
 		for(row=0;row<nRows;++row) {
 			if(histogram[row] > 50.0) correlation[col] += 1.0;
 		}
-		// Mat tmpBox;
-		// colorBoundingBox.copyTo(tmpBox);
-		// rectangle(tmpBox, rect, color);
-		// imshow(windowName, tmpBox);
+
+		Rect rect(col, 0, width, nRows); 
+		Mat tmpBox = grayBoundingBox(rect);
+		Mat drawBox;
+		colorBoundingBox.copyTo(drawBox);
+		// correlation[col] = planarFlow(tmpBox);
+		// correlation[col] = pearsonCorrelation(tmpBox);
+		printf("col=%d corr=%f\n", col, correlation[col]);
+		rectangle(drawBox, rect, color);
+		imshow(windowName, drawBox);
+		// waitKey(0);
+	}
+	delete [] histogram;
+}
+
+bool detectHorizontalEdge(Mat &mat, int rowMin, int rowMax, int colMin, int colMax, double *correlation) {
+
+/* extract the bounding box as a separate image */
+	Point topLeft = Point(colMin, rowMin);
+printf("topLeft = (C=%d, R=%d)\n", topLeft.x, topLeft.y);
+	Point bottomRight = Point(colMax, rowMax);
+printf("bottomRight = (C=%d, R=%d)\n", bottomRight.x, bottomRight.y);
+	Rect rect(topLeft, bottomRight);
+	Mat grayBoundingBox, colorBoundingBox = mat(rect);
+	cvtColor(colorBoundingBox, grayBoundingBox, CV_BGR2GRAY);
+	grayBoundingBox.convertTo(grayBoundingBox, CV_32F);
+/* at this point, we have color and grayscale versions of the bounding box image */
+
+	float *data = (float *)grayBoundingBox.data;
+	int i, col, row, nRows = grayBoundingBox.rows, nCols = grayBoundingBox.cols, width = 3; /* width should be odd */
+printf("nRows = %d nCols = %d\n", nRows, nCols);
+	const char *windowName = "boundingbox";
+	imshow(windowName, grayBoundingBox);
+	waitKey(0);
+	// for(i=0;i<nCols;++i) correlation[i] = 0.0;
+/* if using planar flow */
+	double *histogram = new double [ nRows ];
+	Scalar color(0xff, 0xff, 0xff);
+	width = 5;
+	for(row=0;row<(nRows-width);++row) {
+		for(col=0;col<nCols;++col) {
+			double acc = 0.0;
+			for(i=0;i<width;++i) {
+				int tRow = row + i;
+				int index = tRow * nCols + col;
+				acc += data[index];
+			}
+			histogram[col] = acc;
+			// printf("col=%d row=%d. acc=%f\n", col, row, acc);
+		}
+		correlation[row] = 0.0;
+		for(col=0;col<nCols;++col) {
+			if(histogram[col] > 50.0) correlation[row] += 1.0;
+		}
+
+		Rect rect(0, row, nCols, width); 
+		Mat tmpBox = grayBoundingBox(rect);
+		Mat drawBox;
+		colorBoundingBox.copyTo(drawBox);
+		// correlation[col] = planarFlow(tmpBox);
+		// correlation[col] = pearsonCorrelation(tmpBox);
+		printf("row=%d corr=%f\n", row, correlation[row]);
+		rectangle(drawBox, rect, color);
+		imshow(windowName, drawBox);
 		// waitKey(0);
 	}
 	delete [] histogram;

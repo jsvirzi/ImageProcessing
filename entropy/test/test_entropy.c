@@ -32,7 +32,7 @@ int main(int argc, char ** argv)
 		else { printf("unrecognized argument [%s]\n", argv[i]); return 1; }
 	}
 
-	const char* filename = ifile.c_str(); 
+	const char *filename = ifile.c_str(); 
 	VideoCapture cap(filename); /* open input stream - camera or file */ 
 	const char *windowName = "main";
 	namedWindow(windowName, WINDOW_AUTOSIZE);
