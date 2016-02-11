@@ -16,13 +16,143 @@ int ratio = 3;
 int kernel_size = 3;
 
 void CannyThreshold(Mat &src_gray, Mat &detected_edges, Mat &src, Mat &dst, int, void*) {
-	blur( src_gray, detected_edges, Size(3,3) ); // Reduce noise with a kernel 3x3
-	Canny( detected_edges, detected_edges, lowThreshold, lowThreshold*ratio, kernel_size ); // Canny detector
+	blur(src_gray, detected_edges, Size(3,3)); // Reduce noise with a kernel 3x3
+	Canny(detected_edges, detected_edges, lowThreshold, lowThreshold*ratio, kernel_size); // Canny detector
 	dst = Scalar::all(0); // Using Canny's output as a mask, we display our result
 	src.copyTo( dst, detected_edges);
 }
 
-/* (r, theta) ~ (cols, rows). nX = number of bins in x. number of cols = nX + 1 */
+class LineDetection {
+	public:
+	LineDetection(int nX, int nY);
+	~LineDetection();
+	bool detect(Mat &mat);
+	bool getHistogram(Mat &mat);
+	int nX, nY, nThetaSteps;
+	float *sinLut, *cosLut, *hist, xScale, yScale;
+};
+
+LineDetection::LineDetection(int nX, int nY) {
+	this->nX = nX;
+	this->nY = nY;
+	nThetaSteps = nX + 1;
+	sinLut = new float [ nX ];
+	cosLut = new float [ nX ];
+	hist = new float [ nX * nY ];
+	xScale = yScale = 1.0;
+	for(int i=0;i<nX;++i) {
+		float a, theta = i * M_PI / nThetaSteps;
+		a = sin(theta); 
+		sinLut[i] = a;
+		a = cos(theta); 
+		cosLut[i] = a;
+	}
+}
+
+LineDetection::~LineDetection() {
+	delete [] sinLut;
+	delete [] cosLut;
+}
+
+bool LineDetection::detect(Mat &mat) {
+	int i, col, row, rows = mat.rows, cols = mat.cols;
+	float rMax = sqrt(rows * rows + cols * cols + 1.0); /* add a little bit so r never maxes out completely */
+	memset(hist, 0, nX * nY * sizeof(float));
+	unsigned char *data = (unsigned char *)mat.data;
+	for(row=0;row<rows;++row) {
+		// float y = row;
+		for(col=0;col<cols;++col) {
+			// float x = col;
+			int index = row * cols + col;
+			if(data[index] == 0.0) continue;
+			for(i=0;i<nX;++i) {
+				float c = cosLut[i], s = sinLut[i];
+				float r = col * c + row * s;
+// printf("%d row=%d col=%d cos=%f sin=%f r=%f rmax=%f\n", i, row, col, c, s, r, rMax);
+if(fabs(r) > rMax) { printf("whoa! %f %f\n", r, rMax); r = rMax; }
+				r = (1.0 + r / rMax) * 0.5 * nY;
+				index = floor(r);
+				index = index * nX + i;
+if(index < 0 || (index >= nX * nY)) { printf("help %d\n", index); getchar(); }
+				++hist[index];
+			}
+// printf("RxC = %dx%d\n", rows, cols);
+// getchar();
+		}
+	}
+
+	return true;
+
+}
+
+bool LineDetection::getHistogram(Mat &mat) {
+	Mat tmpMat = Mat(nY, nX, CV_32F, hist);
+  	cvtColor(tmpMat, tmpMat, CV_GRAY2BGR); /* convert to color */
+	tmpMat.convertTo(mat, CV_8UC3);
+printf("mat type = %d vs %d\n", mat.type(), CV_32FC3);
+}
+
+int main(int argc, char** argv) {
+
+	std::string ifile = "lena.jpg";
+	int i, wait = 30, nX = 100, nY = 100;
+	bool debug = false;
+
+	lowThreshold = 50;
+
+	for(i=1;i<argc;++i) {
+		if(strcmp(argv[i], "-debug") == 0) debug = true;
+		else if(strcmp(argv[i], "-i") == 0) ifile = argv[++i]; 
+		else if(strcmp(argv[i], "-threshold") == 0) lowThreshold = atoi(argv[++i]);
+		else if(strcmp(argv[i], "-n") == 0) { nX = atoi(argv[++i]); nY = atoi(argv[++i]); }
+		else if(strcmp(argv[i], "-wait") == 0) wait = atoi(argv[++i]);
+	}
+
+	const char *filename = ifile.c_str(); 
+	VideoCapture cap(filename); /* open input stream - camera or file */ 
+
+	const char *windowName = "main";
+	namedWindow(windowName, WINDOW_AUTOSIZE);
+
+	LineDetection lineDetection(nX, nY);
+
+	while(true) {
+
+
+		Mat raw_frame, frame, gray_frame, detected_edges;
+
+		cap >> raw_frame;
+
+		if(raw_frame.data == 0) { printf("end of input stream\n"); break; }
+		printf("new frame\n");
+
+		Size size(640, 480);
+		resize(raw_frame, frame, size);
+
+  	/// Create a matrix of the same type and size as src (for dst)
+		Mat dst = Mat::zeros(frame.size(), frame.type());
+
+  		cvtColor(frame, gray_frame, CV_BGR2GRAY); /* convert to gray scale */
+
+		CannyThreshold(gray_frame, detected_edges, frame, dst, 0, 0); // dst is a CV_8UC3
+
+		Mat gray_edges;
+		cvtColor(dst, gray_edges, CV_BGR2GRAY);
+		lineDetection.detect(gray_edges);
+		Mat mat;
+		lineDetection.getHistogram(mat);
+		normalize(mat, mat, 0.0, 255.0, CV_MINMAX);
+		// imshow(windowName, gray_edges);
+		imshow(windowName, mat);
+		waitKey(0);
+
+	}
+
+}
+
+#if 0
+
+/* (r, theta) ~ (rows, cols). nX = number of bins in x. number of cols = nX + 1 */
 void detectLines(Mat &imat, double xScale, double yScale, float *hist, int nX, int nY) {
 	int i, j, col, row, rows = imat.rows, cols = imat.cols;
 	float rMax = sqrt(rows * rows + cols * cols);
@@ -134,3 +264,6 @@ int main(int argc, char** argv) {
 	}
 
 }
+
+#endif
+
