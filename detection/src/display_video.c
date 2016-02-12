@@ -44,7 +44,7 @@ void filter_color(Mat &src, Mat &dst, int color) {
 int main(int argc, char **argv) {
 
 	int frame_counter = 0, wait = 0, display_rows = 480, display_cols = 640;
-	bool is_color = true, calibrate = false;
+	bool is_color = true, calibrate = false, crop = false;
 	std::string ifile;
 	Mat camera_matrix, dist_coeffs;
 	int i, rect_t, rect_b, rect_r, rect_l;
@@ -58,6 +58,7 @@ int main(int argc, char **argv) {
 			rect_l = atoi(argv[++i]);
 			rect_b = atoi(argv[++i]);
 			rect_r = atoi(argv[++i]);
+			crop = true;
 		} 
 	}
 
@@ -87,6 +88,19 @@ int main(int argc, char **argv) {
 
 		Size size(display_cols, display_rows);
 		resize(frame, frame, size);
+
+		if(crop) {
+			Point topLeft = Point(rect_l, rect_t);
+			Point bottomRight = Point(rect_r, rect_b);
+printf("topLeft = (C=%d, R=%d)\n", topLeft.x, topLeft.y);
+printf("bottomRight = (C=%d, R=%d)\n", bottomRight.x, bottomRight.y);
+			Rect rect(topLeft, bottomRight);
+
+			rectangle(frame, rect, Scalar(0x00, 0x00, 0xff));
+
+			// Mat newMat = frame(rect);
+			// newMat.copyTo(frame);
+		}
 
 		// filter_color(frame, frame, 2);
 
