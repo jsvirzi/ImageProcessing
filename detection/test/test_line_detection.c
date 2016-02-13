@@ -15,6 +15,18 @@ int const max_lowThreshold = 100;
 int ratio = 3;
 int kernel_size = 3;
 
+void rotate_frame(Mat &src, Mat &dst, double angle) {
+	// get rotation matrix for rotating the image around its center
+	cv::Point2f center(src.cols/2.0, src.rows/2.0);
+	cv::Mat rot = cv::getRotationMatrix2D(center, angle, 1.0);
+	// determine bounding rectangle
+	cv::Rect bbox = cv::RotatedRect(center,src.size(), angle).boundingRect();
+	// adjust transformation matrix
+	rot.at<double>(0,2) += bbox.width/2.0 - center.x;
+	rot.at<double>(1,2) += bbox.height/2.0 - center.y;
+	cv::warpAffine(src, dst, rot, bbox.size());
+}
+
 void CannyThreshold(Mat &src_gray, Mat &detected_edges, Mat &src, Mat &dst, int, void*) {
 	blur(src_gray, detected_edges, Size(3,3)); // Reduce noise with a kernel 3x3
 	Canny(detected_edges, detected_edges, lowThreshold, lowThreshold*ratio, kernel_size); // Canny detector
@@ -96,7 +108,9 @@ int main(int argc, char** argv) {
 
 	std::string ifile = "lena.jpg";
 	int i, wait = 30, nX = 100, nY = 100;
-	bool debug = false;
+	int rect_t, rect_b, rect_r, rect_l;
+	bool debug = false, crop = false;
+	double rotation = 0.0;
 
 	lowThreshold = 50;
 
@@ -106,6 +120,14 @@ int main(int argc, char** argv) {
 		else if(strcmp(argv[i], "-threshold") == 0) lowThreshold = atoi(argv[++i]);
 		else if(strcmp(argv[i], "-n") == 0) { nX = atoi(argv[++i]); nY = atoi(argv[++i]); }
 		else if(strcmp(argv[i], "-wait") == 0) wait = atoi(argv[++i]);
+		else if(strcmp(argv[i], "-rotate") == 0) rotation = atof(argv[++i]);
+		else if(strcmp(argv[i], "-crop") == 0) {
+			rect_t = atoi(argv[++i]);
+			rect_l = atoi(argv[++i]);
+			rect_b = atoi(argv[++i]);
+			rect_r = atoi(argv[++i]);
+			crop = true;
+		}
 	}
 
 	const char *filename = ifile.c_str(); 
@@ -126,8 +148,29 @@ int main(int argc, char** argv) {
 		if(raw_frame.data == 0) { printf("end of input stream\n"); break; }
 		printf("new frame\n");
 
-		Size size(640, 480);
-		resize(raw_frame, frame, size);
+		Mat rotated_frame;
+		if(rotation != 0.0) {
+			rotate_frame(raw_frame, rotated_frame, rotation);
+		} else {
+			raw_frame.copyTo(rotated_frame);
+		}
+
+		Size size(640, 360);
+		resize(rotated_frame, frame, size);
+//		raw_frame.copyTo(frame);
+
+		if(crop) {
+			Point topLeft = Point(rect_l, rect_t);
+			Point bottomRight = Point(rect_r, rect_b);
+printf("topLeft = (C=%d, R=%d)\n", topLeft.x, topLeft.y);
+printf("bottomRight = (C=%d, R=%d)\n", bottomRight.x, bottomRight.y);
+			Rect rect(topLeft, bottomRight);
+
+			// rectangle(frame, rect, Scalar(0x00, 0x00, 0xff));
+
+			Mat newMat = frame(rect);
+			newMat.copyTo(frame);
+		}
 
   	/// Create a matrix of the same type and size as src (for dst)
 		Mat dst = Mat::zeros(frame.size(), frame.type());
@@ -144,6 +187,7 @@ int main(int argc, char** argv) {
 		normalize(mat, mat, 0.0, 255.0, CV_MINMAX);
 		// imshow(windowName, gray_edges);
 		imshow(windowName, mat);
+		// imshow(windowName, frame);
 		waitKey(0);
 
 	}
